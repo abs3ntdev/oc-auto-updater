@@ -157,3 +157,14 @@ export function createAutoUpdatePlugin(packages: string[]): Plugin {
     return {}
   }
 }
+
+export const AutoUpdatePlugin: Plugin = async ({ client }, options) => {
+  const packages = (options as { packages?: string[] } | undefined)?.packages ?? []
+  if (packages.length === 0) {
+    log(client, "no packages configured, skipping")
+    return {}
+  }
+  log(client, `loaded, watching ${packages.length} packages`)
+  void checkAndUpdate(packages, client)
+  return {}
+}
