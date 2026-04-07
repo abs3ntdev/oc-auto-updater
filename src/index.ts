@@ -28,20 +28,43 @@ function getOpencodeCacheDir(): string {
   return path.join(os.homedir(), ".cache", "opencode", "packages")
 }
 
-function findWorkspaceDir(packageName: string, cacheDir: string): string | null {
-  const scope = packageName.startsWith("@") ? packageName.split("/")[0] : null
-  const searchDir = scope ? path.join(cacheDir, scope) : cacheDir
-  const baseName = scope ? packageName.slice(scope.length + 1) : packageName
+function discoverInstalledPlugins(cacheDir: string): Array<{ name: string; workspaceDir: string }> {
+  const plugins: Array<{ name: string; workspaceDir: string }> = []
 
-  if (!fs.existsSync(searchDir)) return null
+  if (!fs.existsSync(cacheDir)) return plugins
 
-  for (const entry of fs.readdirSync(searchDir)) {
-    if (!entry.startsWith(baseName + "@")) continue
-    const candidate = path.join(searchDir, entry)
-    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate
+  for (const entry of fs.readdirSync(cacheDir)) {
+    const entryPath = path.join(cacheDir, entry)
+    if (!fs.statSync(entryPath).isDirectory()) continue
+
+    if (entry.startsWith("@")) {
+      for (const scopedEntry of fs.readdirSync(entryPath)) {
+        if (!scopedEntry.endsWith("@latest")) continue
+        const scopedPath = path.join(entryPath, scopedEntry)
+        if (!fs.statSync(scopedPath).isDirectory()) continue
+        const pkgJsonPath = path.join(scopedPath, "package.json")
+        if (!fs.existsSync(pkgJsonPath)) continue
+        const raw = fs.readFileSync(pkgJsonPath, "utf-8")
+        const pkg = JSON.parse(raw) as WorkspacePackageJson
+        const name = Object.keys(pkg.dependencies ?? {})[0]
+        if (name) {
+          plugins.push({ name, workspaceDir: scopedPath })
+        }
+      }
+    } else {
+      if (!entry.endsWith("@latest")) continue
+      const pkgJsonPath = path.join(entryPath, "package.json")
+      if (!fs.existsSync(pkgJsonPath)) continue
+      const raw = fs.readFileSync(pkgJsonPath, "utf-8")
+      const pkg = JSON.parse(raw) as WorkspacePackageJson
+      const name = Object.keys(pkg.dependencies ?? {})[0]
+      if (name) {
+        plugins.push({ name, workspaceDir: entryPath })
+      }
+    }
   }
 
-  return null
+  return plugins
 }
 
 function getInstalledVersion(packageName: string, workspaceDir: string): string | null {
@@ -108,63 +131,45 @@ function log(client: Client, message: string): void {
     .catch(() => {})
 }
 
-async function checkAndUpdate(packages: string[], client: Client): Promise<void> {
+async function checkAndUpdateAll(client: Client): Promise<void> {
   const cacheDir = getOpencodeCacheDir()
-  log(client, `checking updates, cache: ${cacheDir}`)
+  const plugins = discoverInstalledPlugins(cacheDir)
+  log(client, `found ${plugins.length} plugins in cache`)
 
   await Promise.all(
-    packages.map(async (pkg) => {
-      const workspaceDir = findWorkspaceDir(pkg, cacheDir)
-      if (!workspaceDir) {
-        log(client, `${pkg}: not found in cache`)
-        return
-      }
-
-      const installed = getInstalledVersion(pkg, workspaceDir)
+    plugins.map(async ({ name, workspaceDir }) => {
+      const installed = getInstalledVersion(name, workspaceDir)
       if (!installed) {
-        log(client, `${pkg}: installed version not found`)
+        log(client, `${name}: installed version not found`)
         return
       }
 
-      const latest = await fetchLatestVersion(pkg)
+      const latest = await fetchLatestVersion(name)
       if (!latest) {
-        log(client, `${pkg}: failed to fetch latest from npm`)
+        log(client, `${name}: failed to fetch latest from npm`)
         return
       }
 
       if (installed === latest) {
-        log(client, `${pkg}: up to date (${installed})`)
+        log(client, `${name}: up to date (${installed})`)
         return
       }
 
-      log(client, `${pkg}: updating ${installed} -> ${latest}`)
+      log(client, `${name}: updating ${installed} -> ${latest}`)
 
-      if (!updateWorkspaceVersion(workspaceDir, pkg, latest)) {
-        log(client, `${pkg}: failed to update workspace package.json`)
+      if (!updateWorkspaceVersion(workspaceDir, name, latest)) {
+        log(client, `${name}: failed to update workspace package.json`)
         return
       }
 
       const success = await runInstall(workspaceDir)
-      log(client, `${pkg}: ${success ? `updated to ${latest}` : "bun install failed"}`)
+      log(client, `${name}: ${success ? `updated to ${latest}` : "bun install failed"}`)
     }),
   )
 }
 
-export function createAutoUpdatePlugin(packages: string[]): Plugin {
-  return async ({ client }) => {
-    log(client, `loaded, watching ${packages.length} packages`)
-    void checkAndUpdate(packages, client)
-    return {}
-  }
-}
-
-export const AutoUpdatePlugin: Plugin = async ({ client }, options) => {
-  const packages = (options as { packages?: string[] } | undefined)?.packages ?? []
-  if (packages.length === 0) {
-    log(client, "no packages configured, skipping")
-    return {}
-  }
-  log(client, `loaded, watching ${packages.length} packages`)
-  void checkAndUpdate(packages, client)
+export const AutoUpdatePlugin: Plugin = async ({ client }) => {
+  log(client, "loaded")
+  void checkAndUpdateAll(client)
   return {}
 }
