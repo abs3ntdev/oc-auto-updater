@@ -1,8 +1,12 @@
 {
   "name": "oc-auto-updater",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "OpenCode plugin that automatically updates installed plugins to their latest npm versions",
-  "keywords": ["opencode", "plugin", "auto-update"],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "auto-update"
+  ],
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -23,7 +27,8 @@
   "scripts": {
     "build": "pkgroll",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "bun install && bun run build && npm publish"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.0.0"

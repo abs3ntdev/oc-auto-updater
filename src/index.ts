@@ -46,22 +46,32 @@ function shouldUpdate(name: string, opts: AutoUpdateOptions): boolean {
   return true
 }
 
-function getOpencodeDir(): string {
+function getOpencodeCacheDir(): string {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA
+    if (localAppData) return path.join(localAppData, "opencode", "packages")
+    return path.join(os.homedir(), "AppData", "Local", "opencode", "packages")
+  }
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Caches", "opencode", "packages")
+  }
+  const xdgCache = process.env.XDG_CACHE_HOME
+  if (xdgCache) return path.join(xdgCache, "opencode", "packages")
+  return path.join(os.homedir(), ".cache", "opencode", "packages")
+}
+
+function getOpencodeDataDir(): string {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA
     if (localAppData) return path.join(localAppData, "opencode")
     return path.join(os.homedir(), "AppData", "Local", "opencode")
   }
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Caches", "opencode")
+    return path.join(os.homedir(), "Library", "Application Support", "opencode")
   }
-  const xdgCache = process.env.XDG_CACHE_HOME
-  if (xdgCache) return path.join(xdgCache, "opencode")
-  return path.join(os.homedir(), ".cache", "opencode")
-}
-
-function getOpencodeCacheDir(): string {
-  return path.join(getOpencodeDir(), "packages")
+  const xdgData = process.env.XDG_DATA_HOME
+  if (xdgData) return path.join(xdgData, "opencode")
+  return path.join(os.homedir(), ".local", "share", "opencode")
 }
 
 function readWorkspacePackageName(workspaceDir: string): string | null {
@@ -179,7 +189,7 @@ interface ChangelogEntry {
 
 function writeChangelog(entries: ChangelogEntry[]): void {
   if (entries.length === 0) return
-  const changelogPath = path.join(getOpencodeDir(), "plugin-changelog.md")
+  const changelogPath = path.join(getOpencodeDataDir(), "plugin-changelog.md")
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")
   const lines = [`## ${timestamp}\n`]
   for (const { name, from, to } of entries) {
