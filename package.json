@@ -1,6 +1,6 @@
 {
   "name": "oc-auto-updater",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "OpenCode plugin that automatically updates installed plugins to their latest npm versions",
   "keywords": [
     "opencode",
